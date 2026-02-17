@@ -34,19 +34,37 @@ export default function PollView({ session }) {
             .on(
                 'postgres_changes',
                 {
-                    event: 'INSERT',
+                    event: '*',
                     schema: 'public',
                     table: 'votes',
                     filter: `poll_id=eq.${id}`,
                 },
                 (payload) => {
-                    setVotes((prev) => {
-                        const optionId = payload.new.option_id
-                        return {
-                            ...prev,
-                            [optionId]: (prev[optionId] || 0) + 1,
-                        }
-                    })
+                    if (payload.eventType === 'INSERT') {
+                        setVotes((prev) => {
+                            const optionId = payload.new.option_id
+                            return {
+                                ...prev,
+                                [optionId]: (prev[optionId] || 0) + 1,
+                            }
+                        })
+                    } else if (payload.eventType === 'DELETE') {
+                        setVotes((prev) => {
+                            const optionId = payload.old.option_id
+                            // payload.old might only contain ID if replica identity is default
+                            // We might need to refetch if option_id is missing
+                            if (optionId) {
+                                return {
+                                    ...prev,
+                                    [optionId]: Math.max(0, (prev[optionId] || 0) - 1),
+                                }
+                            } else {
+                                // Fallback: refetch all votes if we can't tell which option was decremented
+                                fetchPollData() // This might be heavy, but safe
+                                return prev
+                            }
+                        })
+                    }
                     // If owner, refresh detailed list
                     if (isOwner) fetchDetailedVotes()
                 }
@@ -241,6 +259,30 @@ export default function PollView({ session }) {
         }
     }
 
+    const handleRetractVote = async () => {
+        if (!confirm("Are you sure you want to change your vote?")) return
+        setLoading(true)
+        try {
+            const { error } = await supabase
+                .from('votes')
+                .delete()
+                .eq('poll_id', id)
+                .eq('user_id', session.user.id)
+
+            if (error) throw error
+
+            setHasVoted(false)
+            // Realtime subscription should handle the count update!
+            // But detailed votes might need refresh
+            if (isOwner) fetchDetailedVotes()
+
+        } catch (err) {
+            alert('Error retracting vote: ' + err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
     const copyLink = () => {
         navigator.clipboard.writeText(window.location.href)
         setCopied(true)
@@ -378,6 +420,18 @@ export default function PollView({ session }) {
                         <div style={{ marginTop: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                             Total votes: <span style={{ color: 'var(--text-color)', fontWeight: 'bold' }}>{totalVotes}</span>
                         </div>
+
+                        {hasVoted && (
+                            <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+                                <button
+                                    onClick={handleRetractVote}
+                                    className="secondary-btn"
+                                    style={{ fontSize: '0.9rem', padding: '0.5rem 1rem', width: 'auto', border: '1px solid var(--surface-border)' }}
+                                >
+                                    Change Vote
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
