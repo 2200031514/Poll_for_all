@@ -40,6 +40,22 @@ export default function Navbar({ session }) {
             </Link>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <Link to="/polls" style={{ textDecoration: 'none' }}>
+                    <button
+                        className="icon-btn"
+                        style={{
+                            background: location.pathname === '/polls' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                            color: 'var(--text-color)',
+                            gap: '0.5rem',
+                            padding: '0.5rem 1rem',
+                            width: 'auto'
+                        }}
+                    >
+                        <BarChart2 size={18} />
+                        <span className="hide-mobile">All Polls</span>
+                    </button>
+                </Link>
+
                 {session ? (
                     <>
                         <Link to="/dashboard" style={{ textDecoration: 'none' }}>
